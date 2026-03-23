@@ -1,0 +1,180 @@
+use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::Context;
+use tokio::net::TcpListener;
+use tokio::sync::watch;
+use tokio::task::JoinSet;
+use tokio_rustls::TlsAcceptor;
+use transit_protocol::CommandDispatcher;
+use transit_rest::AppState;
+
+use crate::config::ServerConfig;
+use crate::connection::handle_connection;
+
+/// Run the TCP and REST servers until a shutdown signal is received.
+pub async fn run(
+    config: &ServerConfig,
+    dispatcher: Arc<CommandDispatcher>,
+    metrics_handle: metrics_exporter_prometheus::PrometheusHandle,
+    mut shutdown_rx: watch::Receiver<bool>,
+) -> anyhow::Result<()> {
+    // Start REST server if configured.
+    let rest_handle = if let Some(rest_addr) = config.rest_bind {
+        let state = AppState {
+            dispatcher: Arc::clone(&dispatcher),
+            metrics_handle,
+        };
+        let router = transit_rest::build_router(state);
+        let rest_listener = tokio::net::TcpListener::bind(rest_addr)
+            .await
+            .with_context(|| format!("binding REST on {rest_addr}"))?;
+        tracing::info!(addr = %rest_addr, "REST API listening");
+        let srx = shutdown_rx.clone();
+        Some(tokio::spawn(async move {
+            axum::serve(rest_listener, router)
+                .with_graceful_shutdown(async move {
+                    let mut rx = srx;
+                    let _ = rx.wait_for(|v| *v).await;
+                })
+                .await
+                .ok();
+        }))
+    } else {
+        None
+    };
+
+    let listener = TcpListener::bind(config.bind)
+        .await
+        .with_context(|| format!("binding TCP on {}", config.bind))?;
+    tracing::info!(addr = %config.bind, "listening");
+
+    let rate_limit = config.rate_limit;
+    let tls_acceptor = build_tls_acceptor(config)?;
+    if tls_acceptor.is_some() {
+        tracing::info!("TLS enabled");
+    }
+
+    let mut tasks = JoinSet::new();
+
+    loop {
+        tokio::select! {
+            biased;
+
+            _ = shutdown_rx.changed() => {
+                if *shutdown_rx.borrow() {
+                    tracing::info!("shutdown signal received, stopping accept loop");
+                    break;
+                }
+            }
+
+            result = listener.accept() => {
+                match result {
+                    Ok((tcp_stream, peer_addr)) => {
+                        tracing::debug!(%peer_addr, "accepted TCP connection");
+                        let disp = Arc::clone(&dispatcher);
+                        let srx = shutdown_rx.clone();
+                        if let Some(ref acceptor) = tls_acceptor {
+                            let acceptor = acceptor.clone();
+                            let rl = rate_limit;
+                            tasks.spawn(async move {
+                                match acceptor.accept(tcp_stream).await {
+                                    Ok(tls_stream) => {
+                                        handle_connection(tls_stream, disp, srx, rl).await;
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(%peer_addr, error = %e, "TLS handshake failed");
+                                    }
+                                }
+                            });
+                        } else {
+                            let rl = rate_limit;
+                            tasks.spawn(async move {
+                                handle_connection(tcp_stream, disp, srx, rl).await;
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, "TCP accept error");
+                    }
+                }
+            }
+        }
+    }
+
+    // Graceful drain: wait up to 30 seconds for in-flight connections.
+    tracing::info!(
+        pending = tasks.len(),
+        "draining in-flight connections (30s timeout)"
+    );
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    while !tasks.is_empty() {
+        tokio::select! {
+            _ = tasks.join_next() => {}
+            _ = tokio::time::sleep_until(deadline) => {
+                tracing::warn!(remaining = tasks.len(), "drain timeout, aborting remaining connections");
+                tasks.abort_all();
+                break;
+            }
+        }
+    }
+
+    if let Some(handle) = rest_handle {
+        let _ = handle.await;
+    }
+
+    tracing::info!("server stopped");
+    Ok(())
+}
+
+/// Build a `TlsAcceptor` if both cert and key paths are configured.
+fn build_tls_acceptor(config: &ServerConfig) -> anyhow::Result<Option<TlsAcceptor>> {
+    let (cert_path, key_path) = match (&config.tls_cert, &config.tls_key) {
+        (Some(c), Some(k)) => (c, k),
+        (None, None) => return Ok(None),
+        _ => anyhow::bail!("both tls_cert and tls_key must be set (or neither)"),
+    };
+
+    let cert_pem = std::fs::read(cert_path)
+        .with_context(|| format!("reading TLS cert: {}", cert_path.display()))?;
+    let key_pem = std::fs::read(key_path)
+        .with_context(|| format!("reading TLS key: {}", key_path.display()))?;
+
+    use rustls_pki_types::pem::PemObject;
+    let certs: Vec<rustls_pki_types::CertificateDer<'static>> =
+        rustls_pki_types::CertificateDer::pem_slice_iter(&cert_pem)
+            .collect::<Result<Vec<_>, _>>()
+            .context("parsing TLS certificates")?;
+    let key = rustls_pki_types::PrivateKeyDer::from_pem_slice(&key_pem)
+        .context("parsing TLS private key")?;
+
+    let tls_config = if let Some(ref ca_path) = config.tls_client_ca {
+        let ca_pem = std::fs::read(ca_path)
+            .with_context(|| format!("reading client CA cert: {}", ca_path.display()))?;
+        let ca_certs: Vec<rustls_pki_types::CertificateDer<'static>> =
+            rustls_pki_types::CertificateDer::pem_slice_iter(&ca_pem)
+                .collect::<Result<Vec<_>, _>>()
+                .context("parsing client CA certificates")?;
+        let mut root_store = rustls::RootCertStore::empty();
+        for cert in ca_certs {
+            root_store
+                .add(cert)
+                .context("adding client CA certificate to root store")?;
+        }
+        let verifier = rustls::server::WebPkiClientVerifier::builder(Arc::new(root_store))
+            .build()
+            .context("building mTLS client verifier")?;
+        tracing::info!("mTLS enabled (client certificate required)");
+        rustls::ServerConfig::builder()
+            .with_client_cert_verifier(verifier)
+            .with_single_cert(certs, key)
+            .context("building TLS server config with mTLS")?
+    } else {
+        rustls::ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(certs, key)
+            .context("building TLS server config")?
+    };
+
+    Ok(Some(TlsAcceptor::from(Arc::new(tls_config))))
+}

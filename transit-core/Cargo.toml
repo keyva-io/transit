@@ -1,0 +1,15 @@
+[package]
+name = "transit-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+keyva-crypto.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+base64.workspace = true
+
+[dev-dependencies]
+hex.workspace = true

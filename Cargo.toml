@@ -1,0 +1,64 @@
+[workspace]
+resolver = "3"
+default-members = ["transit-server"]
+members = [
+    "transit-server",
+    "transit-core",
+    "transit-protocol",
+    "transit-rest",
+    "transit-client",
+    "transit-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+# Internal crates
+transit-core = { path = "transit-core" }
+transit-protocol = { path = "transit-protocol" }
+transit-rest = { path = "transit-rest" }
+
+# Commons crates (keyva-io/commons)
+# Path deps for local development; switch to git/crates.io deps for releases.
+keyva-core = { path = "../commons/keyva-core" }
+keyva-crypto = { path = "../commons/keyva-crypto" }
+keyva-storage = { path = "../commons/keyva-storage" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+
+# Crypto
+ring = "0.17"
+
+# Networking
+axum = "0.8"
+rustls = "0.23"
+rustls-native-certs = "0.8"
+rustls-pki-types = { version = "1", features = ["std"] }
+tokio-rustls = "0.26"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+metrics = "0.24"
+metrics-exporter-prometheus = "0.18"
+
+# Utilities
+thiserror = "2"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+dashmap = "6"
+base64 = "0.22"
+hex = "0.4"
+rustyline = { version = "17", features = ["derive"] }
+uuid = { version = "1", features = ["v4"] }
+libc = "0.2"
