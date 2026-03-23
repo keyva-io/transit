@@ -116,11 +116,11 @@ jobs:
 
       - name: Build (native)
         if: matrix.target != 'aarch64-unknown-linux-musl'
-        run: cargo build --release --target ${{ matrix.target }} --bin keyva-transit --bin keyva-transit-cli
+        run: cargo build --release --target ${{ matrix.target }} -p transit-server -p transit-cli
 
       - name: Build (cross)
         if: matrix.target == 'aarch64-unknown-linux-musl'
-        run: cross build --release --target ${{ matrix.target }} --bin keyva-transit --bin keyva-transit-cli
+        run: cross build --release --target ${{ matrix.target }} -p transit-server -p transit-cli
 
       - name: Package
         run: |
