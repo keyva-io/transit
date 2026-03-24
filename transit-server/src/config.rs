@@ -31,8 +31,6 @@ pub struct ServerConfig {
     pub tls_key: Option<PathBuf>,
     #[serde(default)]
     pub tls_client_ca: Option<PathBuf>,
-    #[serde(default = "default_rest_bind")]
-    pub rest_bind: Option<SocketAddr>,
     #[serde(default)]
     pub rate_limit: Option<u32>,
 }
@@ -44,7 +42,6 @@ impl Default for ServerConfig {
             tls_cert: None,
             tls_key: None,
             tls_client_ca: None,
-            rest_bind: Some(default_rest_bind_addr()),
             rate_limit: None,
         }
     }
@@ -96,14 +93,6 @@ pub struct KeyringConfig {
 
 fn default_bind() -> SocketAddr {
     "0.0.0.0:6499".parse().unwrap()
-}
-
-fn default_rest_bind() -> Option<SocketAddr> {
-    Some(default_rest_bind_addr())
-}
-
-fn default_rest_bind_addr() -> SocketAddr {
-    "0.0.0.0:8099".parse().unwrap()
 }
 
 fn default_data_dir() -> PathBuf {
