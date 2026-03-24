@@ -114,10 +114,11 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          for bin in keyva-transit keyva-transit-cli; do
-            cp target/${{ matrix.target }}/release/$bin dist/
-            cd dist && tar czf ${bin}-${{ github.ref_name }}-${{ matrix.target }}.tar.gz $bin && rm $bin && cd ..
-          done
+          # keyva-transit: server + cli bundled
+          cp target/${{ matrix.target }}/release/keyva-transit dist/
+          cp target/${{ matrix.target }}/release/keyva-transit-cli dist/
+          cd dist && tar czf keyva-transit-${{ github.ref_name }}-${{ matrix.target }}.tar.gz keyva-transit keyva-transit-cli && cd ..
+          rm dist/keyva-transit dist/keyva-transit-cli
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
