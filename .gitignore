@@ -8,3 +8,4 @@
 .env
 .idea/
 transit-data/
+.cargo/
