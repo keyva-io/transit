@@ -2148,6 +2148,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "transit-codegen"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "heck",
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "transit-core"
 version = "0.1.0"
 dependencies = [

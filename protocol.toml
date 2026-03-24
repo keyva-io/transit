@@ -1,0 +1,267 @@
+# Keyva Transit Protocol Specification
+#
+# Machine-readable definition of the Keyva Transit protocol.
+# Used by transit-codegen to generate typed client libraries in any language.
+
+[protocol]
+name = "keyva-transit"
+version = "0.1.0"
+description = "Encryption-as-a-service"
+default_port = 6399
+uri_schemes = ["kvt://", "kvt+tls://"]
+uri_format = "{scheme}[token@]host[:port][/keyring]"
+
+[protocol.wire_format]
+type = "resp3"
+request_format = "array_of_bulk_strings"
+success_envelope = "map"
+error_envelope = "simple_error"
+success_status_field = "status"
+success_status_value = "OK"
+
+# ─── Error codes ──────────────────────────────────────────────────────────────
+
+[error_codes]
+
+[error_codes.DENIED]
+description = "Authentication required or insufficient permissions"
+http_equiv = 401
+
+[error_codes.NOTFOUND]
+description = "Keyring or key version not found"
+http_equiv = 404
+
+[error_codes.BADARG]
+description = "Missing or invalid argument"
+http_equiv = 400
+
+[error_codes.WRONGTYPE]
+description = "Operation not supported for this keyring type"
+http_equiv = 422
+
+[error_codes.DISABLED]
+description = "Keyring is disabled"
+http_equiv = 503
+
+[error_codes.NOTREADY]
+description = "Server is starting up or shutting down"
+http_equiv = 503
+
+[error_codes.INTERNAL]
+description = "Unexpected server error"
+http_equiv = 500
+
+# ─── Shared types ─────────────────────────────────────────────────────────────
+
+[types]
+
+[types.keyring]
+description = "Keyring name"
+wire_type = "bulk_string"
+rust_type = "String"
+python_type = "str"
+typescript_type = "string"
+
+[types.ciphertext]
+description = "Base64-encoded ciphertext with embedded key version"
+wire_type = "bulk_string"
+rust_type = "String"
+python_type = "str"
+typescript_type = "string"
+
+[types.plaintext]
+description = "Base64-encoded plaintext"
+wire_type = "bulk_string"
+rust_type = "String"
+python_type = "str"
+typescript_type = "string"
+
+[types.signature]
+description = "Base64-encoded cryptographic signature"
+wire_type = "bulk_string"
+rust_type = "String"
+python_type = "str"
+typescript_type = "string"
+
+[types.hash_digest]
+description = "Hex-encoded hash digest"
+wire_type = "bulk_string"
+rust_type = "String"
+python_type = "str"
+typescript_type = "string"
+
+[types.key_version]
+description = "Numeric key version"
+wire_type = "integer"
+rust_type = "u32"
+python_type = "int"
+typescript_type = "number"
+
+# ─── Commands ─────────────────────────────────────────────────────────────────
+
+[commands]
+
+[commands.encrypt]
+verb = "ENCRYPT"
+description = "Encrypt plaintext with the active key version"
+replica_behavior = "WriteOnly"
+params = [
+    { name = "keyring", type = "keyring", required = true, position = 1, description = "Target keyring" },
+    { name = "plaintext", type = "plaintext", required = true, position = 2, description = "Base64-encoded data to encrypt" },
+    { name = "context", type = "string", required = false, key = "CONTEXT", description = "Additional authenticated data (AAD)" },
+    { name = "key_version", type = "key_version", required = false, key = "KEY_VERSION", description = "Specific key version to use (default: active)" },
+]
+response = [
+    { name = "ciphertext", type = "ciphertext", description = "Encrypted data with embedded key version" },
+    { name = "key_version", type = "key_version", description = "Key version used for encryption" },
+]
+errors = [
+    { code = "NOTFOUND", condition = "Keyring does not exist" },
+    { code = "BADARG", condition = "Invalid plaintext encoding or missing keyring" },
+]
+
+[commands.decrypt]
+verb = "DECRYPT"
+description = "Decrypt ciphertext using the embedded key version"
+replica_behavior = "PureRead"
+params = [
+    { name = "keyring", type = "keyring", required = true, position = 1, description = "Target keyring" },
+    { name = "ciphertext", type = "ciphertext", required = true, position = 2, description = "Ciphertext to decrypt" },
+    { name = "context", type = "string", required = false, key = "CONTEXT", description = "AAD used during encryption" },
+]
+response = [
+    { name = "plaintext", type = "plaintext", description = "Decrypted data" },
+]
+errors = [
+    { code = "NOTFOUND", condition = "Keyring or key version not found" },
+    { code = "BADARG", condition = "Invalid ciphertext format" },
+]
+
+[commands.rewrap]
+verb = "REWRAP"
+description = "Re-encrypt ciphertext with the current active key version"
+replica_behavior = "WriteOnly"
+params = [
+    { name = "keyring", type = "keyring", required = true, position = 1, description = "Target keyring" },
+    { name = "ciphertext", type = "ciphertext", required = true, position = 2, description = "Ciphertext to rewrap" },
+    { name = "context", type = "string", required = false, key = "CONTEXT", description = "AAD" },
+]
+response = [
+    { name = "ciphertext", type = "ciphertext", description = "Re-encrypted ciphertext with new key version" },
+    { name = "key_version", type = "key_version", description = "New key version used" },
+]
+errors = [
+    { code = "NOTFOUND", condition = "Keyring or key version not found" },
+]
+
+[commands.generate_data_key]
+verb = "GENERATE_DATA_KEY"
+description = "Generate a data encryption key (envelope encryption pattern)"
+replica_behavior = "WriteOnly"
+params = [
+    { name = "keyring", type = "keyring", required = true, position = 1, description = "Target keyring" },
+    { name = "bits", type = "key_version", required = false, key = "BITS", description = "Key size in bits (default: 256)" },
+]
+response = [
+    { name = "plaintext_key", type = "plaintext", description = "Plaintext DEK (use for local encryption, then discard)" },
+    { name = "wrapped_key", type = "ciphertext", description = "Wrapped DEK (store alongside ciphertext, unwrap via DECRYPT)" },
+    { name = "key_version", type = "key_version", description = "Key version used to wrap" },
+]
+errors = [
+    { code = "NOTFOUND", condition = "Keyring does not exist" },
+]
+
+[commands.sign]
+verb = "SIGN"
+description = "Create a detached signature"
+replica_behavior = "WriteOnly"
+params = [
+    { name = "keyring", type = "keyring", required = true, position = 1, description = "Target keyring" },
+    { name = "data", type = "plaintext", required = true, position = 2, description = "Base64-encoded data to sign" },
+    { name = "algorithm", type = "string", required = false, key = "ALGORITHM", description = "Signing algorithm override" },
+]
+response = [
+    { name = "signature", type = "signature", description = "Detached signature" },
+    { name = "key_version", type = "key_version", description = "Key version used" },
+]
+errors = [
+    { code = "NOTFOUND", condition = "Keyring does not exist" },
+]
+
+[commands.verify_signature]
+verb = "VERIFY_SIGNATURE"
+description = "Verify a detached signature"
+replica_behavior = "PureRead"
+params = [
+    { name = "keyring", type = "keyring", required = true, position = 1, description = "Target keyring" },
+    { name = "data", type = "plaintext", required = true, position = 2, description = "Original data" },
+    { name = "signature", type = "signature", required = true, position = 3, description = "Signature to verify" },
+]
+response = [
+    { name = "valid", type = "boolean", description = "Whether the signature is valid" },
+]
+errors = [
+    { code = "NOTFOUND", condition = "Keyring does not exist" },
+]
+
+[commands.hash]
+verb = "HASH"
+description = "Compute a one-way hash"
+replica_behavior = "PureRead"
+params = [
+    { name = "algorithm", type = "string", required = true, position = 1, description = "Hash algorithm (sha256, sha384, sha512)" },
+    { name = "data", type = "plaintext", required = true, position = 2, description = "Data to hash" },
+]
+response = [
+    { name = "digest", type = "hash_digest", description = "Hex-encoded hash digest" },
+    { name = "algorithm", type = "string", description = "Algorithm used" },
+]
+errors = [
+    { code = "BADARG", condition = "Unknown algorithm" },
+]
+
+[commands.rotate]
+verb = "ROTATE"
+description = "Rotate the keyring to a new key version"
+replica_behavior = "WriteOnly"
+params = [
+    { name = "keyring", type = "keyring", required = true, position = 1, description = "Target keyring" },
+    { name = "force", type = "boolean", required = false, key = "FORCE", description = "Force rotation regardless of age" },
+    { name = "dryrun", type = "boolean", required = false, key = "DRYRUN", description = "Preview rotation without applying" },
+]
+response = [
+    { name = "key_version", type = "key_version", description = "New active key version" },
+    { name = "previous_version", type = "key_version", description = "Previous active key version", optional = true },
+]
+errors = [
+    { code = "NOTFOUND", condition = "Keyring does not exist" },
+]
+
+[commands.key_info]
+verb = "KEY_INFO"
+description = "Get keyring metadata and key version information"
+replica_behavior = "PureRead"
+params = [
+    { name = "keyring", type = "keyring", required = true, position = 1, description = "Target keyring" },
+]
+response = [
+    { name = "keyring", type = "keyring", description = "Keyring name" },
+    { name = "type", type = "string", description = "Keyring type (aes256-gcm)" },
+    { name = "active_version", type = "key_version", description = "Currently active key version" },
+    { name = "versions", type = "array", description = "List of all key versions with state" },
+]
+errors = [
+    { code = "NOTFOUND", condition = "Keyring does not exist" },
+]
+
+[commands.health]
+verb = "HEALTH"
+description = "Check server health"
+replica_behavior = "PureRead"
+simple_response = true
+params = [
+    { name = "keyring", type = "keyring", required = false, position = 1, description = "Optional keyring-specific health check" },
+]
+response = [
+    { name = "state", type = "string", description = "Server state (READY, STARTING, etc.)" },
+]
