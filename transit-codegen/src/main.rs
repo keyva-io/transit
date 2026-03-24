@@ -7,18 +7,18 @@
 //!   transit-codegen --spec protocol.toml --lang all --output generated/
 
 use clap::Parser;
+use std::path::PathBuf;
 use transit_codegen::generator::{Generator, write_output};
 use transit_codegen::generators::go::GoGenerator;
 use transit_codegen::generators::python::PythonGenerator;
 use transit_codegen::generators::ruby::RubyGenerator;
 use transit_codegen::generators::typescript::TypeScriptGenerator;
 use transit_codegen::spec::ProtocolSpec;
-use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(
     name = "transit-codegen",
-    about = "Generate typed client libraries from the Keyva Transit protocol spec",
+    about = "Generate typed client libraries from the Keyva Transit protocol spec"
 )]
 struct Cli {
     /// Path to the protocol spec file (protocol.toml)
