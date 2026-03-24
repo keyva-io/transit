@@ -5,7 +5,6 @@ members = [
     "transit-server",
     "transit-core",
     "transit-protocol",
-    "transit-rest",
     "transit-client",
     "transit-cli",
 ]
@@ -20,7 +19,6 @@ license = "MIT OR Apache-2.0"
 # Internal crates
 transit-core = { path = "transit-core" }
 transit-protocol = { path = "transit-protocol" }
-transit-rest = { path = "transit-rest" }
 
 # Commons crates (keyva-io/commons)
 # Path deps for local development; switch to git/crates.io deps for releases.

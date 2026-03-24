@@ -16,7 +16,7 @@ RUN cargo build --release --target x86_64-unknown-linux-musl \
 FROM gcr.io/distroless/static-debian12:nonroot AS keyva-transit
 COPY --from=builder /build/target/x86_64-unknown-linux-musl/release/keyva-transit /keyva-transit
 USER nonroot:nonroot
-EXPOSE 6399 8099
+EXPOSE 6399
 ENTRYPOINT ["/keyva-transit"]
 
 # --- keyva-transit-cli: command-line client ---
