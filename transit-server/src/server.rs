@@ -18,7 +18,6 @@ pub async fn run(
     _metrics_handle: metrics_exporter_prometheus::PrometheusHandle,
     mut shutdown_rx: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
-
     let listener = TcpListener::bind(config.bind)
         .await
         .with_context(|| format!("binding TCP on {}", config.bind))?;
@@ -93,7 +92,6 @@ pub async fn run(
             }
         }
     }
-
 
     tracing::info!("server stopped");
     Ok(())
