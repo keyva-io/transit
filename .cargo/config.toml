@@ -1,0 +1,4 @@
+[patch."https://github.com/keyva-io/commons.git"]
+keyva-core = { path = "../commons/keyva-core" }
+keyva-crypto = { path = "../commons/keyva-crypto" }
+keyva-storage = { path = "../commons/keyva-storage" }

@@ -3,9 +3,7 @@ FROM rust:1-bookworm AS builder
 RUN apt-get update && apt-get install -y musl-tools && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
-
-COPY commons/ /commons/
-COPY transit/ /build/
+COPY . .
 
 RUN rustup target add x86_64-unknown-linux-musl
 

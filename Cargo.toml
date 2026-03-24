@@ -21,10 +21,9 @@ transit-core = { path = "transit-core" }
 transit-protocol = { path = "transit-protocol" }
 
 # Commons crates (keyva-io/commons)
-# Path deps for local development; switch to git/crates.io deps for releases.
-keyva-core = { path = "../commons/keyva-core" }
-keyva-crypto = { path = "../commons/keyva-crypto" }
-keyva-storage = { path = "../commons/keyva-storage" }
+keyva-core = { git = "https://github.com/keyva-io/commons.git", tag = "v0.1.0" }
+keyva-crypto = { git = "https://github.com/keyva-io/commons.git", tag = "v0.1.0" }
+keyva-storage = { git = "https://github.com/keyva-io/commons.git", tag = "v0.1.0" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
